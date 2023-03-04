@@ -2,15 +2,23 @@ package macaddress
 
 import (
 	"context"
-	"crypto/rand"
+	"crypto/md5"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"math/rand"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
+
+func init() {
+	rand.Seed(time.Now().UTC().UnixNano())
+}
 
 const MAC_ADDRESS_LENGTH = 6
 
@@ -55,13 +63,24 @@ func resourceAddressImport(d *schema.ResourceData, meta interface{}) ([]*schema.
 	return []*schema.ResourceData{d}, nil
 }
 
-func resourceAddressCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func SeedFromString(s string) int64 {
+	h := md5.New()
+	_, _ = io.WriteString(h, s)
+	var seed uint64 = (binary.BigEndian.Uint64(h.Sum(nil)))
+	return int64(seed)
+}
+
+func Create(seed string, prefix []interface{}) (string, error) {
 	var groups []string
 	buf := make([]byte, MAC_ADDRESS_LENGTH)
 
-	_, err := rand.Read(buf)
+	if seed != "" {
+		rand.Seed(SeedFromString(seed))
+	}
+
+	_, err := rand.Read(buf) //nolint
 	if err != nil {
-		return diag.FromErr(err)
+		return "", err
 	}
 
 	// Locally administered
@@ -70,15 +89,13 @@ func resourceAddressCreate(ctx context.Context, d *schema.ResourceData, m interf
 	// Unicast
 	buf[0] &= 0xfe
 
-	prefix := d.Get("prefix").([]interface{})
-
 	if len(prefix) > MAC_ADDRESS_LENGTH {
-		return diag.FromErr(errors.New("error generating random mac address: prefix is too large"))
+		return "", errors.New("error generating random mac address: prefix is too large")
 	}
 
 	for index, val := range prefix {
 		if val.(int) > 255 {
-			return diag.FromErr(errors.New("error generating random mac address: prefix segment must be in the range [0,256)"))
+			return "", errors.New("error generating random mac address: prefix segment must be in the range [0,256)")
 		}
 		buf[index] = byte(val.(int))
 	}
@@ -88,6 +105,18 @@ func resourceAddressCreate(ctx context.Context, d *schema.ResourceData, m interf
 	}
 
 	address := strings.Join(groups, ":")
+
+	return address, nil
+}
+
+func resourceAddressCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	seedStr := d.Get("seed").(string)
+	prefix := d.Get("prefix").([]interface{})
+
+	address, err := Create(seedStr, prefix)
+	if err != nil {
+		return diag.FromErr(errors.New("error generating random mac address: prefix segment must be in the range [0,256)"))
+	}
 
 	d.SetId(address)
 	d.Set("address", address)

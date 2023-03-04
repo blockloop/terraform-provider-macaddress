@@ -2,6 +2,7 @@ package macaddress
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 
 func TestAccMacAddress(t *testing.T) {
 	prefix := []byte{0x10, 0xfe, 0x55}
+	seed := "myseed"
 	resource.Test(t, resource.TestCase{
 		PreCheck:  func() { testAccPreCheck(t) },
 		Providers: testAccProviders,
@@ -29,7 +31,13 @@ func TestAccMacAddress(t *testing.T) {
 			{
 				Config: testAccMacAddressConfigPrefix(prefix),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckMacAddressPrefixMatch("macaddress.address_prefix", prefix),
+					testAccCheckMacAddressPrefixMatch("macaddress.address_seed", prefix),
+				),
+			},
+			{
+				Config: testAccMacAddressConfigSeed(seed),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckMacAddressSeedMatch("macaddress.address_prefix", seed),
 				),
 			},
 		},
@@ -55,6 +63,16 @@ func testAccMacAddressConfigPrefix(prefix []byte) string {
 	}
 	`, prefixListStr)
 }
+
+
+func testAccMacAddressConfigSeed(seed string) string {
+	return fmt.Sprintf(`
+	resource "macaddress" "address_seed" {
+        seed = %q
+	}
+	`, seed)
+}
+
 
 func testAccCheckMacAddressValid(id string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
@@ -88,7 +106,7 @@ func testAccCheckMacAddressValid(id string) resource.TestCheckFunc {
 	}
 }
 
-func testAccCheckMacAddressPrefixMatch(id string, prefix []byte) resource.TestCheckFunc {
+func testAccCheckMacAddressSeedMatch(id string, seed string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[id]
 		if !ok {
@@ -100,15 +118,10 @@ func testAccCheckMacAddressPrefixMatch(id string, prefix []byte) resource.TestCh
 
 		address := rs.Primary.Attributes["address"]
 
-		octets, err := parseMacAddress(address)
-		if err != nil {
-			return err
-		}
+		rand.Seed(SeedFromString(seed))
 
-		for index, element := range prefix {
-			if element != octets[index] {
-				return fmt.Errorf("address (%s) does not match specified prefix", address)
-			}
+		if _, err := Create(seed, []interface{}{""}); err != nil {
+			return fmt.Errorf("address (%s) does not match expected macaddr", address)
 		}
 
 		return nil
@@ -137,3 +150,31 @@ func hasBit(n byte, pos uint) bool {
 	val := n & (1 << pos)
 	return (val > 0)
 }
+
+func testAccCheckMacAddressPrefixMatch(id string, prefix []byte) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[id]
+		if !ok {
+			return fmt.Errorf("Not found: %s", id)
+		}
+		if rs.Primary.ID == "" {
+			return fmt.Errorf("No ID is set")
+		}
+
+		address := rs.Primary.Attributes["address"]
+
+		octets, err := parseMacAddress(address)
+		if err != nil {
+			return err
+		}
+
+		for index, element := range prefix {
+			if element != octets[index] {
+				return fmt.Errorf("address (%s) does not match specified prefix", address)
+			}
+		}
+
+		return nil
+	}
+}
+

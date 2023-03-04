@@ -1,16 +1,16 @@
 # terraform-provider-macaddress
 Generates random locally administered unicast MAC address
 
-Terraform Registry: https://registry.terraform.io/providers/ivoronin/macaddress/latest
+Terraform Registry: https://registry.terraform.io/providers/blockloop/macaddress/latest
 
-Docs: https://registry.terraform.io/providers/ivoronin/macaddress/latest/docs
+Docs: https://registry.terraform.io/providers/blockloop/macaddress/latest/docs
 
 # Use case
 ```hcl
 terraform {
   required_providers {
     macaddress = {
-      source = "ivoronin/macaddress"
+      source = "blockloop/macaddress"
       version = "0.3.0"
     }
   }
